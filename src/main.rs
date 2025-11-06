@@ -4,7 +4,7 @@ mod handlers;
 mod models;
 mod state;
 
-use handlers::*;
+use handlers::{allocation::allocation, buy::buy, sell::sell};
 use state::AppState;
 
 #[actix_web::main]

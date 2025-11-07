@@ -78,7 +78,7 @@ mod tests {
 
     // Creates a BTreeMap and populates it with one entry using provided data.
     fn create_bids(username: String, price: u64, volume: u64) -> BTreeMap<u64, VecDeque<Bid>> {
-        let mut expected = BTreeMap::new();
+        let mut bids = BTreeMap::new();
         let mut queue = VecDeque::new();
         queue.push_back(Bid {
             username,
@@ -86,8 +86,8 @@ mod tests {
             volume,
             seq: 0,
         });
-        expected.insert(price, queue);
-        return expected;
+        bids.insert(price, queue);
+        return bids;
     }
 
     #[actix_web::test]

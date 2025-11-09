@@ -24,8 +24,8 @@ pub enum Action {
 fn action_strategy() -> impl Strategy<Value = Action> {
     prop_oneof![
         (0u64..250).prop_map(|vol| Action::Sell(vol)),
-        (".{0,6}", 0u64..20, 0u64..250)
-            .prop_map(|(user, price, vol)| Action::Buy(user, price, vol)),
+        (".{0,6}", 0u64..250, 0u64..20)
+            .prop_map(|(user, vol, price)| Action::Buy(user, vol, price)),
     ]
 }
 
@@ -36,10 +36,10 @@ fn action_strategy_few_users() -> impl Strategy<Value = Action> {
         (select(vec![50u64, 100, 150, 200, 250])).prop_map(|vol| Action::Sell(vol)),
         (
             select(vec!["u1".to_string(), "u2".to_string(), "u3".to_string()]),
+            select(vec![50u64, 100, 150, 200, 250]),
             1u64..10,
-            select(vec![50u64, 100, 150, 200, 250])
         )
-            .prop_map(|(user, price, vol)| Action::Buy(user, price, vol)),
+            .prop_map(|(user, vol, price)| Action::Buy(user, vol, price)),
     ]
 }
 
@@ -67,7 +67,7 @@ proptest! {
                         total_sold += volume;
                     },
                     Action::Buy(username, price, volume) => {
-                        if handle_buy(&state, username, price, volume).await.is_ok() {
+                        if handle_buy(&state, username, volume, price).await.is_ok() {
                             total_bought += volume;
                         }
                     }
@@ -106,7 +106,7 @@ proptest! {
                         handle_sell(&state, volume).await;
                     },
                     Action::Buy(username, price, volume) => {
-                        let _ = handle_buy(&state, username.clone(), price, volume).await;
+                        let _ = handle_buy(&state, username.clone(), volume,price).await;
 
                         // Check allocation didn't decrease
                         let allocations = state.allocations.lock().unwrap();

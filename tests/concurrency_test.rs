@@ -18,8 +18,8 @@ async fn test_concurrent_buys_maintain_fifo() {
             handle_buy(
                 &state_clone,
                 format!("user{}", i),
-                5, // Same price - tests FIFO
                 10,
+                5, // Same price - tests FIFO
             )
             .await
         });
@@ -60,7 +60,7 @@ async fn test_concurrent_buy_and_sell_conservation() {
     for i in 0..100 {
         let state_clone = state.clone();
         let handle = rt::spawn(async move {
-            handle_buy(&state_clone, format!("user{}", i), i % 10, 50 * (i % 10)).await
+            handle_buy(&state_clone, format!("user{}", i), 50 * (i % 10), i % 10).await
         });
         buy_handles.push(handle);
         total_bought += 50 * (i % 10);
@@ -115,7 +115,7 @@ async fn test_concurrent_allocations_never_decrease() {
             tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
 
             let username = format!("user{}", i % 3);
-            handle_buy(&state_clone, username.clone(), i % 10, 50 * (i % 10))
+            handle_buy(&state_clone, username.clone(), 50 * (i % 10), i % 10)
                 .await
                 .unwrap();
         }));

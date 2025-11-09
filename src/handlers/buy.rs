@@ -8,8 +8,8 @@ use std::sync::atomic::Ordering;
 pub async fn handle_buy(
     state: &AppState,
     username: String,
-    price: u64,
     volume: u64,
+    price: u64,
 ) -> Result<(), TwinError> {
     if username.is_empty() {
         return Err(TwinError::MissingUsername);
@@ -41,8 +41,8 @@ pub async fn handle_buy(
         let seq = state.seq.fetch_add(1, Ordering::Relaxed);
         let bid = Bid {
             username,
-            price,
             volume,
+            price,
             seq,
         };
 
@@ -60,11 +60,11 @@ pub async fn handle_buy(
 pub async fn buy(state: web::Data<AppState>, req: web::Json<BuyRequest>) -> impl Responder {
     let BuyRequest {
         username,
-        price,
         volume,
+        price,
     } = req.into_inner();
 
-    match handle_buy(&state, username, price, volume).await {
+    match handle_buy(&state, username, volume, price).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::BadRequest().body("username can not be empty"),
     }
@@ -77,13 +77,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     // Creates a BTreeMap and populates it with one entry using provided data.
-    fn create_bids(username: String, price: u64, volume: u64) -> BTreeMap<u64, VecDeque<Bid>> {
+    fn create_bids(username: String, volume: u64, price: u64) -> BTreeMap<u64, VecDeque<Bid>> {
         let mut bids = BTreeMap::new();
         let mut queue = VecDeque::new();
         queue.push_back(Bid {
             username,
-            price,
             volume,
+            price,
             seq: 0,
         });
         bids.insert(price, queue);
@@ -95,10 +95,10 @@ mod tests {
         let state = AppState::default();
         let data = web::Data::new(state.clone());
 
-        let result = handle_buy(&data, "u1".to_string(), 3, 100).await;
+        let result = handle_buy(&data, "u1".to_string(), 100, 3).await;
         assert!(result.is_ok());
 
-        let expected = create_bids("u1".to_string(), 3, 100);
+        let expected = create_bids("u1".to_string(), 100, 3);
         let bids = state.bids.lock().unwrap();
         assert_eq!(*bids, expected);
     }
@@ -111,7 +111,7 @@ mod tests {
 
         let data = web::Data::new(state.clone());
 
-        let result = handle_buy(&data, "u1".to_string(), 3, 100).await;
+        let result = handle_buy(&data, "u1".to_string(), 100, 3).await;
         assert!(result.is_ok());
 
         // Supply is updated. No bids.
@@ -133,13 +133,13 @@ mod tests {
 
         let data = web::Data::new(state.clone());
 
-        let result = handle_buy(&data, "u1".to_string(), 4, 200).await;
+        let result = handle_buy(&data, "u1".to_string(), 200, 4).await;
         assert!(result.is_ok());
 
         // Required resources are higner than supply,
         // so both allocation and bid are created.
         // Supply is emptied.
-        let expected = create_bids("u1".to_string(), 4, 150);
+        let expected = create_bids("u1".to_string(), 150, 4);
         assert_eq!(*state.bids.lock().unwrap(), expected);
         assert_eq!(*state.supply.lock().unwrap(), 0);
 
@@ -154,7 +154,7 @@ mod tests {
         let state = AppState::default();
         let data = web::Data::new(state.clone());
 
-        let result = handle_buy(&data, "u1".to_string(), 3, 0).await;
+        let result = handle_buy(&data, "u1".to_string(), 0, 3).await;
         assert!(result.is_ok());
 
         // Could also test if all locks have default values.
@@ -166,7 +166,7 @@ mod tests {
         let state = AppState::default();
         let data = web::Data::new(state.clone());
 
-        handle_buy(&data, "".to_string(), 3, 100).await.unwrap();
+        handle_buy(&data, "".to_string(), 100, 3).await.unwrap();
     }
 
     #[actix_web::test]
@@ -177,12 +177,12 @@ mod tests {
         // Spawn two concurrent buys
         let handle1 = {
             let data = data.clone();
-            tokio::spawn(async move { handle_buy(&data, "u1".to_string(), 5, 100).await })
+            tokio::spawn(async move { handle_buy(&data, "u1".to_string(), 100, 5).await })
         };
 
         let handle2 = {
             let data = data.clone();
-            tokio::spawn(async move { handle_buy(&data, "u2".to_string(), 5, 50).await })
+            tokio::spawn(async move { handle_buy(&data, "u2".to_string(), 50, 5).await })
         };
 
         // Wait for both to complete

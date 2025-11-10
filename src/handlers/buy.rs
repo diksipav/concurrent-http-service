@@ -2,7 +2,7 @@ use crate::errors::TwinError;
 use crate::models::*;
 use crate::state::AppState;
 use actix_web::{HttpResponse, Responder, post, web};
-use std::collections::VecDeque;
+use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 
 pub async fn handle_buy(
@@ -24,9 +24,11 @@ pub async fn handle_buy(
 
     {
         let mut supply_guard = state.supply.lock().unwrap();
-        if *supply_guard > 0 {
-            let available = *supply_guard;
-            to_allocate = volume.min(available);
+        let supply = *supply_guard;
+        if supply > 0 {
+            // If supply > volume allocate volume.
+            // If volume > supply allocate supply.
+            to_allocate = volume.min(supply);
             *supply_guard -= to_allocate;
             volume -= to_allocate;
         }
@@ -49,8 +51,8 @@ pub async fn handle_buy(
         let mut bids_guard = state.bids.lock().unwrap();
         bids_guard
             .entry(price)
-            .or_insert_with(VecDeque::new)
-            .push_back(bid);
+            .or_insert_with(BinaryHeap::new)
+            .push(bid);
     }
 
     Ok(())
@@ -74,21 +76,6 @@ pub async fn buy(state: web::Data<AppState>, req: web::Json<BuyRequest>) -> impl
 mod tests {
     use super::*;
     use actix_web::web;
-    use std::collections::BTreeMap;
-
-    // Creates a BTreeMap and populates it with one entry using provided data.
-    fn create_bids(username: String, volume: u64, price: u64) -> BTreeMap<u64, VecDeque<Bid>> {
-        let mut bids = BTreeMap::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(Bid {
-            username,
-            volume,
-            price,
-            seq: 0,
-        });
-        bids.insert(price, queue);
-        return bids;
-    }
 
     #[actix_web::test]
     async fn test_buy_with_no_supply_creates_bid() {
@@ -98,9 +85,19 @@ mod tests {
         let result = handle_buy(&data, "u1".to_string(), 100, 3).await;
         assert!(result.is_ok());
 
-        let expected = create_bids("u1".to_string(), 100, 3);
         let bids = state.bids.lock().unwrap();
-        assert_eq!(*bids, expected);
+        let heap = bids.get(&3).unwrap();
+
+        assert_eq!(heap.len(), 1);
+        assert_eq!(
+            heap.peek(),
+            Some(&Bid {
+                username: "u1".to_string(),
+                volume: 100,
+                price: 3,
+                seq: 0,
+            })
+        );
     }
 
     #[actix_web::test]
@@ -139,8 +136,19 @@ mod tests {
         // Required resources are higner than supply,
         // so both allocation and bid are created.
         // Supply is emptied.
-        let expected = create_bids("u1".to_string(), 150, 4);
-        assert_eq!(*state.bids.lock().unwrap(), expected);
+        let bids = state.bids.lock().unwrap();
+        let heap = bids.get(&4).unwrap();
+        assert_eq!(heap.len(), 1);
+        assert_eq!(
+            heap.peek(),
+            Some(&Bid {
+                username: "u1".to_string(),
+                volume: 150,
+                price: 4,
+                seq: 0,
+            })
+        );
+
         assert_eq!(*state.supply.lock().unwrap(), 0);
 
         let allocations = state.allocations.lock().unwrap();
@@ -194,9 +202,29 @@ mod tests {
         // Assert that there is a queue created for
         // the price 5 with sequence increasing.
         let bids = state.bids.lock().unwrap();
-        let queue = bids.get(&5).unwrap();
-        assert_eq!(queue.len(), 2);
-        assert_eq!(queue.get(0).unwrap().seq, 0);
-        assert_eq!(queue.get(1).unwrap().seq, 1);
+        let heap = bids.get(&5).unwrap();
+        assert_eq!(heap.len(), 2);
+
+        let heap_vec: Vec<&Bid> = heap.iter().collect();
+
+        assert_eq!(
+            heap_vec[0],
+            &Bid {
+                username: "u1".to_string(),
+                volume: 100,
+                price: 5,
+                seq: 0,
+            }
+        );
+
+        assert_eq!(
+            heap_vec[1],
+            &Bid {
+                username: "u2".to_string(),
+                volume: 50,
+                price: 5,
+                seq: 1,
+            }
+        );
     }
 }

@@ -14,20 +14,21 @@ pub async fn handle_sell(state: &AppState, supply: u64) {
     if !bids_guard.is_empty() {
         let mut allocations_guard = state.allocations.lock().unwrap();
         for (_price, queue) in bids_guard.iter_mut().rev() {
+            let mut front_volume: Option<u64> = None;
             while supply > 0 && !queue.is_empty() {
-                let front = queue.front_mut().unwrap();
-
-                let to_allocate = supply.min(front.volume);
-                *allocations_guard.entry(front.username.clone()).or_insert(0) += to_allocate;
-
-                front.volume -= to_allocate;
-                supply -= to_allocate;
-
-                if front.volume == 0 {
-                    queue.pop_front();
+                if let Some(mut front) = queue.peek_mut() {
+                    // If supply > volume allocate volume.
+                    // If volume > supply allocate supply.
+                    let to_allocate = supply.min(front.volume);
+                    *allocations_guard.entry(front.username.clone()).or_insert(0) += to_allocate;
+                    front.volume -= to_allocate;
+                    supply -= to_allocate;
+                    front_volume = Some(front.volume);
+                }
+                if front_volume == Some(0) {
+                    queue.pop();
                 }
             }
-
             if supply == 0 {
                 break;
             }
@@ -56,7 +57,7 @@ pub async fn sell(state: web::Data<AppState>, req: web::Json<SellRequest>) -> im
 mod tests {
     use super::*;
     use actix_web::web;
-    use std::collections::{BTreeMap, VecDeque};
+    use std::collections::{BTreeMap, BinaryHeap};
 
     #[actix_web::test]
     async fn test_sell_when_no_bids_creates_supply() {
@@ -75,8 +76,8 @@ mod tests {
 
         // Populate state bids with one element
         let mut bids = BTreeMap::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(Bid {
+        let mut queue = BinaryHeap::new();
+        queue.push(Bid {
             username: "u1".to_string(),
             price: 5,
             volume: 100,

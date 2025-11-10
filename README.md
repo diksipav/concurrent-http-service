@@ -120,3 +120,14 @@ curl -s 'localhost:8080/allocation?username=u3'  # Returns: 50
 ## Architecture
 
 ### Core Components
+
+**AppState:**
+- `bids: Mutex<BTreeMap<u64, BinaryHeap<Bid>>>` - Open bids organized by price
+- `supply: Mutex<u64>` - Leftover supply from sells
+- `allocations: Mutex<HashMap<String, u64>>` - Total allocated per user
+- `seq: AtomicU64` - Monotonic sequence for FIFO ordering
+
+**Allocation Algorithm:**
+1. **Buy:** Check leftover supply first, allocate immediately if available, queue remainder as bid
+2. **Sell:** Iterate bids from highest to lowest price, fill in FIFO order (via seq), store leftovers in supply
+3. **FIFO guarantee:** Atomic sequence counter ensures deterministic ordering under concurrency
